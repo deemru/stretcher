@@ -156,42 +156,29 @@ func formatURI(req *http.Request) string {
 		uri += "?" + req.URL.RawQuery
 	}
 
-	method := req.Method
-
-	if method == "POST" {
-		if uri != "/" {
-			uri += " (POST)"
-		} else {
-			if req.Body != nil {
-				var bodyBuffer bytes.Buffer
-				bodyReader := io.TeeReader(
-					io.LimitReader(req.Body, 8192),
-					&bodyBuffer,
-				)
-
+	if req.Method == http.MethodPost {
+		if req.Body != nil {
+			bodyBytes, err := io.ReadAll(req.Body)
+			if err == nil && len(bodyBytes) > 0 {
 				var jsonReq jsonMethod
-				if err := json.NewDecoder(bodyReader).Decode(&jsonReq); err == nil && jsonReq.Method != "" {
+				if err := json.Unmarshal(bodyBytes, &jsonReq); err == nil && jsonReq.Method != "" {
 					uri = jsonReq.Method
 				} else {
 					uri += " (POST)"
 				}
-
-				combinedReader := io.MultiReader(
-					bytes.NewReader(bodyBuffer.Bytes()),
-					req.Body,
-				)
-				req.Body = io.NopCloser(combinedReader)
 			} else {
 				uri += " (POST)"
 			}
+			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		} else {
+			uri += " (POST)"
 		}
 	}
 
 	return uri
 }
 
-func logRequestComplete(state *IPState, req *http.Request, cc float64, statusCode int) {
-	uri := formatURI(req)
+func logRequestComplete(state *IPState, uri string, cc float64, statusCode int) {
 	log.Printf("%s: %d (%d/%d/%d/%d): %s",
 		state.ip,
 		statusCode,
@@ -302,6 +289,10 @@ func ipWorker(state *IPState) {
 func handleEvent(state *IPState, ev *requestEvent) {
 	req := ev.req
 	w := ev.w
+	var uri string
+	if debug {
+		uri = formatURI(req)
+	}
 	ttnow := time.Now()
 
 	var ttdiff float64
@@ -349,7 +340,7 @@ func handleEvent(state *IPState, ev *requestEvent) {
 				<-timer.C
 			}
 			if debug {
-				logRequestComplete(state, req, 0, 0)
+				logRequestComplete(state, uri, 0, 0)
 			}
 			return
 		}
@@ -375,7 +366,7 @@ func handleEvent(state *IPState, ev *requestEvent) {
 	state.ttlast = ttnow
 
 	if debug {
-		logRequestComplete(state, req, cc, statusCode)
+		logRequestComplete(state, uri, cc, statusCode)
 	}
 }
 
