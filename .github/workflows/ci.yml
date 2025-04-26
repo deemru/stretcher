@@ -1,0 +1,51 @@
+name: build-and-release
+on:
+  push:
+    tags: ['*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos:   [linux, windows, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: cross-compile
+        env:
+          CGO_ENABLED: 0
+          GOOS:   ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          ext=$([[ "$GOOS" == windows ]] && echo .exe) || true
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w" -o dist/stretcher-${GOOS}-${GOARCH}${ext} stretcher.go
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stretcher-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/**/*
