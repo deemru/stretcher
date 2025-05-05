@@ -1,4 +1,4 @@
-name: build-and-release
+name: CI
 on:
   push:
     tags: ['*']
@@ -20,32 +20,68 @@ jobs:
         with:
           go-version: 'stable'
 
-      - name: cross-compile
+      - name: Get version from tag
+        run: |
+          PACKAGE_VERSION=${GITHUB_REF#refs/tags/}
+          PACKAGE_VERSION=${PACKAGE_VERSION#v}
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+
+      - name: Cross-compile
         env:
           CGO_ENABLED: 0
           GOOS:   ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
           ext=$([[ "$GOOS" == windows ]] && echo .exe) || true
-          mkdir -p dist
-          go build -trimpath -ldflags "-s -w" -o dist/stretcher-${GOOS}-${GOARCH}${ext} stretcher.go
+          mkdir -p artifacts
+          go build -trimpath -ldflags "-s -w -X main.Version=$PACKAGE_VERSION" -o artifacts/stretcher-${GOOS}-${GOARCH}${ext} stretcher.go
 
       - uses: actions/upload-artifact@v4
         with:
-          name: stretcher-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/*
+          name: artifacts
+          path: artifacts/*
+          if-no-files-found: error
+
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Get version from tag
+        run: |
+          PACKAGE_VERSION=${GITHUB_REF#refs/tags/}
+          PACKAGE_VERSION=${PACKAGE_VERSION#v}
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+
+      - name: Build Debian package
+        run: |
+          mkdir -p debian/usr/bin artifacts
+          sed -i "s/^Version:.*/Version: $PACKAGE_VERSION/" debian/DEBIAN/control
+          go build -trimpath -ldflags "-s -w -X main.Version=$PACKAGE_VERSION" -o debian/usr/bin/stretcher stretcher.go
+          chmod 755 debian/DEBIAN/postinst debian/DEBIAN/prerm debian/DEBIAN/postrm debian/usr/bin/stretcher
+          dpkg-deb --build debian artifacts/stretcher_linux_amd64.deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifacts
+          path: artifacts/*
           if-no-files-found: error
 
   release:
-    needs: build
+    needs: [build, build-deb]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          name: artifacts
+          path: release
 
-      - name: publish
+      - name: Publish
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/**/*
+          files: release/*

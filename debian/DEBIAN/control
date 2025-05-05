@@ -1,0 +1,11 @@
+Package: stretcher
+Version: 1.0.0
+Section: net
+Priority: optional
+Architecture: amd64
+Depends: systemd
+Maintainer: Dmitrii Pichulin <deem@deem.ru>
+Description: Minimal request throttling proxy server
+ Stretcher is a minimal request throttling proxy server written in Go.
+ It serializes requests per IP, throttles requests based on their consumption,
+ and offers configurable window and target settings.

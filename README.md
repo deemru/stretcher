@@ -8,10 +8,46 @@ Stretcher is a minimal request throttling proxy server written in Go (as a succe
 - Easy to deploy and monitor
 - Built-in debug logging
 
-## Basic usage
+## Installation
+
+### Option 1: Using Debian Package (Recommended)
 
 ```bash
-go run stretcher.go --listen=127.0.0.1:8080 --upstream=127.0.0.1:80 --timeout=12 --window=12 --target=4 --concurrency=64 --maxbytes=65536 --debug=true
+curl -L -o stretcher.deb https://github.com/deemru/stretcher/releases/latest/download/stretcher_linux_amd64.deb
+sudo dpkg -i stretcher.deb
+```
+
+The Debian package automatically:
+- Creates a stretcher user
+- Installs the binary to /usr/bin/stretcher
+- Sets up a systemd service that starts automatically
+
+To change the configuration:
+```bash
+sudo nano /etc/systemd/system/stretcher.service
+sudo systemctl daemon-reload
+sudo systemctl restart stretcher.service
+```
+
+### Option 2: Manual Installation
+
+1. Create user and directory:
+```bash
+sudo useradd -m -s /bin/bash stretcher && sudo mkdir /stretcher && sudo chown -R stretcher /stretcher
+```
+
+2. Download and install the binary:
+```bash
+sudo rm -rf /stretcher/* && sudo curl -L -o /stretcher/stretcher https://github.com/deemru/stretcher/releases/latest/download/stretcher-linux-amd64 && sudo chmod +x /stretcher/stretcher
+```
+
+3. Set up autostart via crontab:
+```bash
+sudo nano /etc/crontab
+```
+Add this line:
+```
+@reboot stretcher systemd-cat -t Stretcher -- /stretcher/stretcher --upstream 127.0.0.1:80
 ```
 
 ## Configuration
@@ -29,59 +65,41 @@ go run stretcher.go --listen=127.0.0.1:8080 --upstream=127.0.0.1:80 --timeout=12
 
 Example usage:
 ```bash
-go run stretcher.go --listen=127.0.0.1:8080 --upstream=127.0.0.1:80 --timeout=12 --window=12 --target=4 --concurrency=64 --maxbytes=65536 --debug=true
-```
-
-## Installation
-
-### Manual installation
-
-```bash
-# Install Go
-apt update
-apt install golang-go git -y
-
-# Set up Go environment
-mkdir -p ~/go
-export GOPATH=~/go
-export PATH=$PATH:$GOPATH/bin
-```
-
-### Create user and setup directory
-```bash
-useradd -m -s /bin/bash stretcher
-mkdir /stretcher
-chown -R stretcher /stretcher
-```
-
-### Clone repository
-```bash
-sudo -u stretcher bash -c "cd /stretcher && git clone https://github.com/deemru/stretcher.git"
-```
-
-## Building
-
-### Build the binary
-```bash
-cd /stretcher/stretcher
-go build -o stretcher
-```
-
-## Running
-
-### Start the service
-```bash
-sudo -u stretcher bash -c "cd /stretcher/stretcher && ./stretcher --upstream=127.0.0.1:80 --debug=true"
-```
-
-### For automatic startup on boot
-```bash
-echo "@reboot stretcher cd /stretcher/stretcher && ./stretcher --upstream=127.0.0.1:80 --debug=true | systemd-cat -t Stretcher &" >> /etc/crontab
+stretcher --listen=127.0.0.1:8080 --upstream=127.0.0.1:80 --timeout=12 --window=12 --target=4 --concurrency=64 --maxbytes=65536 --debug=true
 ```
 
 ## Monitoring
 
 ### View the logs
+
+For Debian package installation:
+```bash
+journalctl -u stretcher.service -f -n 100
+```
+
+For manual installation:
 ```bash
 journalctl -t Stretcher -f -n 100
+```
+
+### Check service status (Debian package method)
+```bash
+sudo systemctl status stretcher
+```
+
+## Building from Source
+
+If you want to build the binary yourself:
+
+```bash
+# Install Go
+sudo apt update
+sudo apt install golang-go git -y
+
+# Clone the repository
+git clone https://github.com/deemru/stretcher.git
+cd stretcher
+
+# Build the binary
+go build -trimpath -ldflags "-s -w" -o stretcher stretcher.go
 ```

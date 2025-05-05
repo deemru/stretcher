@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+
+if ! id -u stretcher > /dev/null 2>&1; then
+    useradd -m -s /bin/bash stretcher
+fi
+
+if [ ! -f /etc/systemd/system/stretcher.service ]; then
+    cat > /etc/systemd/system/stretcher.service << EOF
+[Unit]
+Description=Stretcher - Request Throttling Proxy
+After=network.target
+
+[Service]
+Type=simple
+User=stretcher
+ExecStart=/usr/bin/stretcher --upstream=127.0.0.1:80 --debug=false
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
+systemctl daemon-reload
+systemctl enable stretcher.service
+systemctl start stretcher.service
+
+exit 0

@@ -1,0 +1,17 @@
+#!/bin/bash
+set -e
+
+if [ -f /etc/systemd/system/stretcher.service ]; then
+    rm -f /etc/systemd/system/stretcher.service
+    systemctl daemon-reload
+fi
+
+if [ "$1" = "purge" ]; then
+    if id -u stretcher > /dev/null 2>&1; then
+        if ! find / -user stretcher -print -quit 2>/dev/null | grep -q .; then
+            userdel -r stretcher >/dev/null 2>&1 || true
+        fi
+    fi
+fi
+
+exit 0
