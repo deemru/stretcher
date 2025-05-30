@@ -125,7 +125,7 @@ func cleanupIPStates() {
 
 			mapLock.RLock()
 			for ip, state := range ipStates {
-				if len(state.queue) == 0 && now.Sub(state.ttlast) > window {
+				if state.queued == 0 && now.Sub(state.ttlast) > window {
 					toRemove = append(toRemove, ip)
 				}
 			}
@@ -135,7 +135,7 @@ func cleanupIPStates() {
 				mapLock.Lock()
 				for _, ip := range toRemove {
 					if state, exists := ipStates[ip]; exists {
-						if len(state.queue) == 0 && now.Sub(state.ttlast) > window {
+						if state.queued == 0 && now.Sub(state.ttlast) > window {
 							close(state.queue)
 							delete(ipStates, ip)
 						}
@@ -200,17 +200,10 @@ func enqueueHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	clientIP := getClientIP(req)
-	state := getIPState(clientIP)
-
-	state.mu.Lock()
-	if state.queued >= concurrency {
-		state.mu.Unlock()
-		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+	state := getIPState(w, clientIP)
+	if state == nil {
 		return
 	}
-
-	state.queued++
-	state.mu.Unlock()
 
 	e := &requestEvent{
 		req:      req,
@@ -247,26 +240,27 @@ func getClientIP(req *http.Request) string {
 	return ip
 }
 
-func getIPState(ip string) *IPState {
-	mapLock.RLock()
-	state, ok := ipStates[ip]
-	mapLock.RUnlock()
-
-	if ok {
-		return state
-	}
-
+func getIPState(w http.ResponseWriter, ip string) *IPState {
 	mapLock.Lock()
 	defer mapLock.Unlock()
 
-	state, ok = ipStates[ip]
+	state, ok := ipStates[ip]
 	if ok {
+		state.mu.Lock()
+		if state.queued >= concurrency {
+			state.mu.Unlock()
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return nil
+		}
+
+		state.queued++
+		state.mu.Unlock()
 		return state
 	}
 
 	state = &IPState{
 		queue:  make(chan *requestEvent, concurrency),
-		queued: 0,
+		queued: 1,
 		ttlast: time.Time{},
 		cclast: 0.0,
 		ddlast: 0.0,
