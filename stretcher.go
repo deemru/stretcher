@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,12 +26,11 @@ type requestEvent struct {
 
 type IPState struct {
 	queue  chan *requestEvent
-	queued int
+	queued int32
 	ttlast time.Time
 	cclast float64
 	ddlast float64
 	ip     string
-	mu     sync.Mutex
 }
 
 var (
@@ -216,9 +216,7 @@ func enqueueHandler(w http.ResponseWriter, req *http.Request) {
 
 	<-e.done
 
-	state.mu.Lock()
-	state.queued--
-	state.mu.Unlock()
+	atomic.AddInt32(&state.queued, -1)
 }
 
 func getClientIP(req *http.Request) string {
@@ -242,19 +240,16 @@ func getClientIP(req *http.Request) string {
 
 func getIPState(w http.ResponseWriter, ip string) *IPState {
 	mapLock.Lock()
-	defer mapLock.Unlock()
 
 	state, ok := ipStates[ip]
 	if ok {
-		state.mu.Lock()
-		if state.queued >= concurrency {
-			state.mu.Unlock()
+		if atomic.LoadInt32(&state.queued) >= int32(concurrency) {
+			mapLock.Unlock()
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return nil
 		}
-
-		state.queued++
-		state.mu.Unlock()
+		atomic.AddInt32(&state.queued, 1)
+		mapLock.Unlock()
 		return state
 	}
 
@@ -265,11 +260,11 @@ func getIPState(w http.ResponseWriter, ip string) *IPState {
 		cclast: 0.0,
 		ddlast: 0.0,
 		ip:     ip,
-		mu:     sync.Mutex{},
 	}
 	ipStates[ip] = state
-	go ipWorker(state)
+	mapLock.Unlock()
 
+	go ipWorker(state)
 	return state
 }
 
