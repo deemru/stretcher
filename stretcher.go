@@ -243,7 +243,7 @@ func getIPState(w http.ResponseWriter, ip string) *IPState {
 
 	state, ok := ipStates[ip]
 	if ok {
-		if atomic.LoadInt32(&state.queued) >= int32(concurrency) {
+		if state.queued >= int32(concurrency) {
 			mapLock.Unlock()
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return nil
