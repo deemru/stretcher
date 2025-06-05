@@ -10,45 +10,40 @@ Stretcher is a minimal request throttling proxy server written in Go (as a succe
 
 ## Installation
 
-### Option 1: Using Debian Package (Recommended)
+Download and install the latest Stretcher release for Linux (AMD64):
 
 ```bash
-curl -L -o stretcher.deb https://github.com/deemru/stretcher/releases/latest/download/stretcher_linux_amd64.deb
-sudo dpkg -i stretcher.deb
+curl -L -o stretcher.deb https://github.com/deemru/stretcher/releases/latest/download/stretcher_linux_amd64.deb \
+    && dpkg -i stretcher.deb \
+    && unlink stretcher.deb \
+    && service stretcher status
 ```
+
+- Downloads the latest `.deb` package.
+- Installs it using `dpkg`.
+- Deletes the downloaded package.
+- Checks the status of the `stretcher` service.
 
 The Debian package automatically:
 - Creates a stretcher user
 - Installs the binary to /usr/bin/stretcher
 - Sets up a systemd service that starts automatically
 
-To change the configuration:
+## Service Configuration
+
+Edit the systemd service file for Stretcher and apply changes:
+
 ```bash
-sudo nano /etc/systemd/system/stretcher.service
-sudo systemctl daemon-reload
-sudo systemctl restart stretcher.service
+nano /etc/systemd/system/stretcher.service \
+    && systemctl daemon-reload \
+    && systemctl restart stretcher.service \
+    && journalctl -u stretcher -f -n 100
 ```
 
-### Option 2: Manual Installation
-
-1. Create user and directory:
-```bash
-sudo useradd -m -s /bin/bash stretcher && sudo mkdir /stretcher && sudo chown -R stretcher /stretcher
-```
-
-2. Download and install the binary:
-```bash
-sudo rm -rf /stretcher/* && sudo curl -L -o /stretcher/stretcher https://github.com/deemru/stretcher/releases/latest/download/stretcher-linux-amd64 && sudo chmod +x /stretcher/stretcher
-```
-
-3. Set up autostart via crontab:
-```bash
-sudo nano /etc/crontab
-```
-Add this line:
-```
-@reboot stretcher systemd-cat -t Stretcher -- /stretcher/stretcher --upstream 127.0.0.1:80
-```
+- Opens the service file for editing.
+- Reloads systemd to apply changes.
+- Restarts the Stretcher service.
+- Streams the last 100 log entries and follows the log output.
 
 ## Configuration
 
@@ -63,43 +58,28 @@ Add this line:
 | `--maxbytes` | Maximum request body size in bytes | 65536 |
 | `--debug` | Enable debug logging | true |
 
-Example usage:
+### Example Configuration
+
+Basic usage with custom settings:
+```bash
+stretcher --listen=0.0.0.0:8080 --upstream=127.0.0.1:80 --window=10 --target=6
+```
+
+Full configuration example:
 ```bash
 stretcher --listen=127.0.0.1:8080 --upstream=127.0.0.1:80 --timeout=12 --window=12 --target=4 --concurrency=64 --maxbytes=65536 --debug=true
 ```
 
-## Monitoring
-
-### View the logs
-
-For Debian package installation:
-```bash
-journalctl -u stretcher.service -f -n 100
-```
-
-For manual installation:
-```bash
-journalctl -t Stretcher -f -n 100
-```
-
-### Check service status (Debian package method)
-```bash
-sudo systemctl status stretcher
-```
-
 ## Building from Source
 
-If you want to build the binary yourself:
+Build Stretcher from source code:
 
 ```bash
-# Install Go
-sudo apt update
-sudo apt install golang-go git -y
+# Install dependencies
+sudo apt update && sudo apt install golang-go git -y
 
-# Clone the repository
-git clone https://github.com/deemru/stretcher.git
-cd stretcher
-
-# Build the binary
-go build -trimpath -ldflags "-s -w" -o stretcher stretcher.go
+# Clone and build
+git clone https://github.com/deemru/stretcher.git \
+    && cd stretcher \
+    && go build -trimpath -ldflags "-s -w" -o stretcher stretcher.go
 ```
